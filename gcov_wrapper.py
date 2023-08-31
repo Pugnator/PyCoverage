@@ -4,15 +4,16 @@ import json
 import os
 import re
 import subprocess
+from pathlib import Path
 
 DESCRIPTION = """Python based gcov wrapper for MinGW        
         """
 
-extensions = ['.cpp', '.c', '.cc']
+extensions = [".cpp", ".c", ".cc"]
 
 
 def generateCombinedHTML(results, htmlName=None):
-    content = f'''
+    content = f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -20,47 +21,49 @@ def generateCombinedHTML(results, htmlName=None):
     </head>
     <body>
         <h1>Combined Function Coverage Report</h1>
-    '''
+    """
 
     for source_file, function_coverages in results.items():
         if not function_coverages:
-            content += f'''
-                    Function {source_file} is not used<br>
-            '''
+            content += f"""
+                    Source file {source_file} is not used<br>
+            """
             continue
 
-        content += f'''
+        content += f"""
         <h2>Function Coverage Report for {source_file}</h2>
         <table>
             <tr>
                 <th>Function Name</th>
                 <th>Coverage Percentage</th>
+                <th>Times Executed</th>
             </tr>
-        '''
+        """
 
         for coverage in function_coverages:
-            content += f'''
+            content += f"""
             <tr>
                 <td>{coverage["function_name"]}</td>
                 <td>{coverage["coverage_percent"]:.2f}%</td>
+                <td>{coverage["execution_count"]} times</td>
             </tr>
-            '''
-        content += '''
+            """
+        content += """
         </table>
-        '''
+        """
 
-    content += '''
+    content += """
     </body>
     </html>
-    '''
+    """
 
-    html_file_path = htmlName or 'report.html'
-    with open(html_file_path, 'w') as html_file:
+    html_file_path = htmlName or "report.html"
+    with open(html_file_path, "w") as html_file:
         html_file.write(content)
 
 
 def parseGzJSON(fileName):
-    with gzip.open(fileName, 'rt') as f:
+    with gzip.open(fileName, "rt") as f:
         data = f.read()
         return json.loads(data)
 
@@ -75,9 +78,10 @@ def calculateFunctionCoverage(function):
 
 
 def reportFileCoverage(sourceFile, buildFolder=None):
-    gcovOptions = "-m -f -j"
+    gcovOptions = "-m -f -j -r "
     if buildFolder:
-        gcovOptions += f' -o {buildFolder}'
+        p = os.path.splitext(f'{buildFolder}/{sourceFile}')[0]+'.o'
+        gcovOptions += f" --object-file {p}"
 
     cmd = f"gcov {sourceFile} {gcovOptions}"
 
@@ -107,10 +111,10 @@ def reportFileCoverage(sourceFile, buildFolder=None):
     for function in fileInfo["functions"]:
         functionName = function["demangled_name"]
         functionCoverage = calculateFunctionCoverage(function)
-        function_coverages.append({
-            "function_name": functionName,
-            "coverage_percent": functionCoverage
-        })
+        executionCount = function["execution_count"]
+        function_coverages.append(
+            {"function_name": functionName, "coverage_percent": functionCoverage, "execution_count": executionCount}
+        )
 
     os.remove(jsonFile)
     return function_coverages
@@ -122,7 +126,7 @@ def filteredFileList(folder_path, extensions):
     for root, _, files in os.walk(folder_path):
         for file in files:
             if any(file.lower().endswith(ext.lower()) for ext in extensions):
-                file_paths.append(os.path.abspath(os.path.join(root, file)))
+                file_paths.append(os.path.relpath(os.path.join(root, file)))
 
     return file_paths
 
@@ -139,11 +143,28 @@ def processSourceFolder(folder, buildFolder, outputFile):
 
 
 def args_processing():
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=DESCRIPTION)
-    parser.add_argument('-f', '--source_folder', required=False, help='The path to the source folder containing multiple source files. The script will process all source files in this folder and generate a combined HTML report')
-    parser.add_argument('-s', '--source_file', required=False, help='The path to the source file for which you want to generate a coverage report.')
-    parser.add_argument('-b', '--build_folder', help='The optional path to the build folder (if your project''s build artifacts are located there).')
-    parser.add_argument('-o', '--output_file', help='Output file name.')
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter, description=DESCRIPTION
+    )
+    parser.add_argument(
+        "-f",
+        "--source_folder",
+        required=False,
+        help="The path to the source folder containing multiple source files. The script will process all source files in this folder and generate a combined HTML report",
+    )
+    parser.add_argument(
+        "-s",
+        "--source_file",
+        required=False,
+        help="The path to the source file for which you want to generate a coverage report.",
+    )
+    parser.add_argument(
+        "-b",
+        "--build_folder",
+        help="The optional path to the build folder (if your project"
+        "s build artifacts are located there).",
+    )
+    parser.add_argument("-o", "--output_file", help="Output file name.")
     processed_args = parser.parse_args()
     return processed_args
 
@@ -155,12 +176,12 @@ def main():
         return
 
     if not args.source_file:
-        print('Please specify a folder or a file to parse')
+        print("Please specify a folder or a file to parse")
         return
 
     result = reportFileCoverage(args.source_file, args.build_folder)
     generateCombinedHTML({["args.source_file"]: result}, args.output_file)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
